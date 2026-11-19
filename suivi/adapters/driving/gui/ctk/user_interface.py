@@ -1,7 +1,4 @@
-"""Fabrique de l'interface customtkinter : fenêtre, barre latérale verte, pages et vues.
-
-Même rôle que `tk/user_interface.py` : c'est l'unique classe à brancher dans main.py pour changer d'interface.
-"""
+"""Fabrique de l'interface customtkinter : fenêtre, barre latérale verte, pages et vues."""
 from __future__ import annotations
 
 import customtkinter as ctk
@@ -19,11 +16,12 @@ from .categories_view import CtkCategoryManagerView
 from .dialogs import CtkDialogs
 from .header_view import CtkHeaderView
 from .report_view import CtkReportView
+from .sync_view import CtkSyncView
 from .transactions_view import CtkTransactionsView
 from .wallets_view import CtkWalletsView
 from .widgets import apply_table_style, label
 
-_PAGES = {  # onglet : (titre de la page, sous-titre)
+_PAGES = {
     Tab.DASHBOARD: ("Tableau de bord", "Où en sont vos budgets et comment l'argent circule"),
     Tab.ENTRY: ("Saisie", "Enregistrez vos dépôts et vos dépenses"),
     Tab.BALANCES: ("Solde par date", "Évolution de votre solde jour après jour"),
@@ -33,6 +31,7 @@ _PAGES = {  # onglet : (titre de la page, sous-titre)
     Tab.BUDGET: ("Budget", "Calculez et déposez le budget d'une période"),
     Tab.ANALYSIS: ("Analyse budget", "Trouvez le bon budget journalier d'une catégorie"),
     Tab.WALLETS: ("Portefeuilles", "Un portefeuille = un livre de comptes (banque, caisse…)"),
+    Tab.SYNC: ("Synchronisation", "Configuration du partage entre appareils"),
 }
 
 
@@ -77,9 +76,9 @@ class CtkUserInterface(UserInterface):
 
         self.root.grid_columnconfigure(0, weight=1)
         self.root.grid_rowconfigure(0, weight=1)
-        app_frame = ctk.CTkFrame(self.root, fg_color=t.WHITE, corner_radius=0)   # l'application
+        app_frame = ctk.CTkFrame(self.root, fg_color=t.WHITE, corner_radius=0)
         app_frame.grid(row=0, column=0, sticky="nsew")
-        auth_frame = ctk.CTkFrame(self.root, fg_color=t.WHITE, corner_radius=0)  # l'authentification
+        auth_frame = ctk.CTkFrame(self.root, fg_color=t.WHITE, corner_radius=0)
         app_frame.grid_columnconfigure(1, weight=1)
         app_frame.grid_rowconfigure(0, weight=1)
         sidebar = ctk.CTkFrame(app_frame, width=232, fg_color=t.GREEN, corner_radius=0)
@@ -134,6 +133,7 @@ class CtkUserInterface(UserInterface):
         self.budget = CtkBudgetView(bodies[Tab.BUDGET])
         self.analysis = CtkAnalysisView(bodies[Tab.ANALYSIS])
         self.wallets = CtkWalletsView(bodies[Tab.WALLETS])
+        self.sync = CtkSyncView(bodies[Tab.SYNC])
         self.navigator.show_tab(Tab.DASHBOARD)
 
     def run(self) -> None:

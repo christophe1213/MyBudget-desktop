@@ -17,6 +17,7 @@ class Tab(Enum):
     BUDGET = 6
     ANALYSIS = 7
     WALLETS = 8
+    SYNC = 9
 
 
 @dataclass(frozen=True)
