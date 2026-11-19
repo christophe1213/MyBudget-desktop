@@ -1,40 +1,70 @@
-"""Page de configuration visuelle de la synchronisation (sans transport réseau raccordé)."""
+"""Page de synchronisation utilisant le serveur HTTP local."""
 from __future__ import annotations
 
+import io
 import tkinter as tk
 from tkinter import ttk
 
+from . import theme as t
+from ...driven.sync_server import SyncHTTPServer
+
 
 class TkSyncView:
-    """Présente les réglages client/serveur; les actions réseau restent désactivées fonctionnellement."""
-
     def __init__(self, parent):
-        self._status = tk.StringVar(value="Synchronisation non configurée")
-        ttk.Label(parent, text="Se connecter à un serveur", font=("Arial", 12, "bold")).pack(
-            anchor="w", pady=(4, 8))
-        ttk.Label(parent, text="Adresse du serveur").pack(anchor="w")
-        self._url = tk.StringVar(value="http://127.0.0.1:8765")
-        ttk.Entry(parent, textvariable=self._url, width=55).pack(anchor="w", pady=(4, 6))
-        ttk.Label(parent, text="Adresse locale ou URL fournie par la personne qui partage les données.",
-                  foreground="#555").pack(anchor="w", pady=(0, 16))
+        del t
+        self._server: SyncHTTPServer | None = None
+        self._status = tk.StringVar(value="Synchronisation arrêtée")
+        self._server_port = tk.StringVar(value="8765")
+        self._qr_image = None
 
-        ttk.Separator(parent).pack(fill="x", pady=8)
-        ttk.Label(parent, text="Héberger sur cet ordinateur", font=("Arial", 12, "bold")).pack(
+        ttk.Label(parent, text="Serveur de synchronisation", font=("Arial", 12, "bold")).pack(
             anchor="w", pady=(4, 8))
         ttk.Label(parent, text="Port local").pack(anchor="w")
-        self._port = tk.StringVar(value="8765")
-        ttk.Entry(parent, textvariable=self._port, width=12).pack(anchor="w", pady=(4, 6))
-        ttk.Label(parent, text="Le serveur n'est pas démarré. L'accès réseau et le partage ne sont pas encore activés.",
-                  foreground="#555", wraplength=850, justify="left").pack(anchor="w", pady=(0, 12))
+        ttk.Entry(parent, textvariable=self._server_port, width=12).pack(anchor="w", pady=(4, 6))
+        ttk.Label(parent, text="Le serveur écoute sur toutes les interfaces réseau de cet ordinateur.",
+                  foreground="#555").pack(anchor="w", pady=(0, 12))
 
         actions = ttk.Frame(parent)
         actions.pack(anchor="w", pady=(4, 10))
-        for text in ("Tester la connexion", "Synchroniser maintenant", "Démarrer le serveur"):
-            ttk.Button(actions, text=text, command=self._not_available).pack(side="left", padx=(0, 8))
+        ttk.Button(actions, text="Démarrer le serveur", command=self.start).pack(side="left", padx=(0, 8))
+        ttk.Button(actions, text="Arrêter", command=self.stop).pack(side="left")
+
         ttk.Label(parent, textvariable=self._status, foreground="#2B7DE9", wraplength=850,
                   justify="left").pack(anchor="w", pady=(8, 6))
-        ttk.Label(parent, text="Cette page est une maquette de configuration. Elle n'envoie aucune donnée et n'ouvre aucun port.",
+        self._qr_label = ttk.Label(parent)
+        self._qr_label.pack(anchor="w", pady=(4, 8))
+        ttk.Label(parent, text="Connectez un appareil au même réseau Wi-Fi, puis flashez le QR code. "
+                              "L'échange de données financières sera ajouté ensuite.",
                   foreground="#555", wraplength=850, justify="left").pack(anchor="w")
 
-    def _not_available(self) -> None:
-        self._status.set("Non disponible : le service de synchronisation n'est pas encore implémenté.")
+    def start(self) -> None:
+        if self._server is not None and self._server.running:
+            self._status.set("Serveur déjà actif.")
+            return
+        try:
+            port = int(self._server_port.get().strip())
+            self._server = SyncHTTPServer(port)
+            url = self._server.start()
+            self._status.set(f"Serveur actif : {url}")
+            self._show_qr()
+        except (ValueError, OSError, RuntimeError) as exc:
+            self._server = None
+            self._status.set(f"Impossible de démarrer le serveur : {exc}")
+
+    def stop(self) -> None:
+        if self._server is not None:
+            self._server.stop()
+        self._server = None
+        self._qr_label.configure(image="")
+        self._qr_image = None
+        self._status.set("Serveur arrêté.")
+
+    def _show_qr(self) -> None:
+        try:
+            from PIL import Image, ImageTk
+            png = self._server.qr_png()
+            image = Image.open(io.BytesIO(png)).resize((260, 260))
+            self._qr_image = ImageTk.PhotoImage(image)
+            self._qr_label.configure(image=self._qr_image)
+        except (ImportError, RuntimeError, OSError) as exc:
+            self._status.set(f"Serveur actif, mais QR code indisponible : {exc}")
