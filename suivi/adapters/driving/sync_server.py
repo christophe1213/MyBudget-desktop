@@ -1,5 +1,7 @@
 """Serveur HTTP local préparé pour la synchronisation de Repère.
 
+C'est un adaptateur PILOTANT : un appareil distant commande l'application à travers lui (c'est pourquoi il
+vit dans `adapters/driving/` et non dans `adapters/driven/`).
 Cette première version expose uniquement un état de santé et une page de test.
 Elle ne reçoit ni n'envoie encore les données financières.
 """
@@ -50,8 +52,8 @@ class SyncHTTPServer:
         owner = self
 
         class Handler(BaseHTTPRequestHandler):
-            def _headers(self, content_type: str, length: int) -> None:
-                self.send_response(200)
+            def _headers(self, content_type: str, length: int, status: int = 200) -> None:
+                self.send_response(status)
                 self.send_header("Content-Type", content_type)
                 self.send_header("Content-Length", str(length))
                 self.send_header("Cache-Control", "no-store")
@@ -64,7 +66,13 @@ class SyncHTTPServer:
                     self._headers("application/json; charset=utf-8", len(payload))
                     self.wfile.write(payload)
                 elif path == "/qr.png":
-                    png = owner.qr_png()
+                    try:
+                        png = owner.qr_png()
+                    except RuntimeError as exc:   # dépendance 'qrcode' absente : réponse HTTP claire, pas de socket coupée
+                        message = str(exc).encode("utf-8")
+                        self._headers("text/plain; charset=utf-8", len(message), status=501)
+                        self.wfile.write(message)
+                        return
                     self._headers("image/png", len(png))
                     self.wfile.write(png)
                 else:
@@ -72,7 +80,7 @@ class SyncHTTPServer:
                         "<!doctype html><meta charset=utf-8><title>Repère synchronisation</title>"
                         "<h1>Repère synchronisation</h1>"
                         "<p>Serveur actif. L'échange de données n'est pas encore implémenté.</p>"
-                        f'<p><a href="/health">Vérifier l’état du serveur</a></p>'
+                        '<p><a href="/health">Vérifier l’état du serveur</a></p>'
                     ).encode("utf-8")
                     self._headers("text/html; charset=utf-8", len(html))
                     self.wfile.write(html)
@@ -100,7 +108,7 @@ class SyncHTTPServer:
         try:
             import qrcode
         except ImportError as exc:
-            raise RuntimeError("Installez la dépendance 'qrcode' (pip install -r requirements.txt).") from exc
+            raise RuntimeError("Installez la dépendance 'qrcode' (pip install qrcode[pil]).") from exc
 
         image = qrcode.make(self.base_url)
         output = io.BytesIO()

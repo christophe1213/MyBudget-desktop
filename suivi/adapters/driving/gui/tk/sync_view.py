@@ -5,13 +5,11 @@ import io
 import tkinter as tk
 from tkinter import ttk
 
-from . import theme as t
-from ...driven.sync_server import SyncHTTPServer
+from ...sync_server import SyncHTTPServer
 
 
 class TkSyncView:
     def __init__(self, parent):
-        del t
         self._server: SyncHTTPServer | None = None
         self._status = tk.StringVar(value="Synchronisation arrêtée")
         self._server_port = tk.StringVar(value="8765")

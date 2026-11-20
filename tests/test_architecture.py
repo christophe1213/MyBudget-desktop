@@ -19,7 +19,7 @@ RULES = {
     "suivi.adapters.driven": (("suivi.domain", "suivi.application", "suivi.adapters.driven"),
                               ("openpyxl", "sqlmodel", "sqlalchemy", "pydantic")),
     "suivi.adapters.driving": (("suivi.domain", "suivi.application", "suivi.adapters.driving"),
-                               ("tkinter", "customtkinter")),
+                               ("tkinter", "customtkinter", "PIL", "qrcode")),
 }
 
 
@@ -77,6 +77,11 @@ class ArchitectureTest(unittest.TestCase):
                 return not module.startswith("suivi.adapters.driven.sqlmodel_auth")
             if top in ("openpyxl", "sqlite3"):
                 return not module.startswith("suivi.adapters.driven")
+            if top == "qrcode":                 # génération du QR code : serveur de synchronisation seulement
+                return module != "suivi.adapters.driving.sync_server"
+            if top == "PIL":                    # affichage du QR code : vues de synchronisation seulement
+                return not module.startswith(("suivi.adapters.driving.gui.tk.sync_view",
+                                              "suivi.adapters.driving.gui.ctk.sync_view"))
             return top in ("pandas", "numpy")
         self.assertEqual(self.violations(forbidden), [])
 

@@ -12,7 +12,7 @@ from unittest.mock import MagicMock, patch
 
 from suivi.adapters.driven.auth_wiring import sqlmodel_auth_ports
 from suivi.adapters.driven.wiring import excel_ports, sqlite_ports
-from suivi.adapters.driving.gui.contract.dto import ChartData
+from suivi.adapters.driving.gui.contract.dto import ChartData, Tab
 from suivi.adapters.driving.gui.contract.interfaces import Dialogs
 from suivi.bootstrap import build_application
 from suivi.domain.model.transaction import Kind
@@ -115,6 +115,12 @@ class TkViewsSmokeTest(unittest.TestCase):
         ui.header._listener.on_wallet_selected("Principal")
         self.assertEqual(len(stored().transactions), 4)
         self.assertEqual(app.wallets.names(), ["Principal", "Caisse"])
+
+        ui.navigator.show_tab(Tab.SYNC)                       # synchronisation : l'onglet existe, port invalide refusé
+        self.assertEqual(ui.sync._status.get(), "Synchronisation arrêtée")
+        ui.sync._server_port.set("0")
+        ui.sync.start()
+        self.assertIn("Impossible de démarrer", ui.sync._status.get())
 
     def build_ctk(self, folder, with_auth, interface="ctk"):
         module_name, class_name = INTERFACES[interface]

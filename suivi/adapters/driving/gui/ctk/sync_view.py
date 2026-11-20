@@ -6,14 +6,11 @@ import io
 import customtkinter as ctk
 
 from . import theme as t
-from ...driven.sync_server import SyncHTTPServer
+from ...sync_server import SyncHTTPServer
 from .widgets import button, label
 
 
 class CtkSyncView:
-    def __init__(parent_self, parent):
-        del parent_self
-
     def __init__(self, parent):
         self._server: SyncHTTPServer | None = None
         self._status = ctk.StringVar(value="Synchronisation arrêtée")
@@ -63,6 +60,7 @@ class CtkSyncView:
             self._server.stop()
         self._server = None
         self._qr_label.configure(image="", text="")
+        self._qr = None
         self._status.set("Serveur arrêté.")
 
     def _show_qr(self) -> None:
