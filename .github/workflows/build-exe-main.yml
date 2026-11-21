@@ -1,0 +1,103 @@
+# À placer dans : .github/workflows/build-exe.yml
+#
+# Compile Repère en un seul fichier Repere.exe (Windows) avec PyInstaller.
+# Se déclenche UNIQUEMENT sur la branche main :
+#   - automatiquement à chaque push sur main (y compris la fusion d'une pull request)
+#   - à la main : onglet « Actions » > « Build Windows exe » > « Run workflow » (ignoré si une autre branche est choisie)
+#
+# Le .exe est récupérable dans la page du run, section « Artifacts » (conservé 30 jours).
+# Les données (classeurs Excel, comptes.db, session.json, journal_synchronisation.txt) sont créées à côté du
+# .exe : voir data_dir() dans main.py.
+
+name: Build Windows exe
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      run_tests:
+        description: "Lancer les tests avant la compilation"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-exe-main
+  cancel-in-progress: true   # un nouveau push sur main remplace le build encore en cours
+
+env:
+  PYTHON_VERSION: "3.13"
+  PYINSTALLER_VERSION: "6.22.3"
+  PYTHONUTF8: "1"          # sources et fichiers en UTF-8 quel que soit l'encodage par défaut de Windows
+
+jobs:
+  build:
+    if: ${{ github.ref == 'refs/heads/main' }}   # garde-fou : un lancement manuel depuis une autre branche est ignoré
+    runs-on: windows-latest
+    steps:
+      - name: Récupérer le code
+        uses: actions/checkout@v7
+
+      - name: Installer Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Installer les dépendances
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then
+            python -m pip install -r requirements.txt
+          else
+            python -m pip install customtkinter openpyxl sqlmodel
+          fi
+          # QR code et Pillow (synchronisation) : installés même si requirements.txt ne les liste pas encore
+          python -m pip install "qrcode[pil]" Pillow
+          python -m pip install "pyinstaller==${PYINSTALLER_VERSION}"
+          python -m pip list
+
+      - name: Lancer les tests
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.run_tests }}
+        shell: bash
+        run: python -m unittest discover -s tests -t . -v
+
+      - name: Compiler en .exe
+        shell: bash
+        run: |
+          # --collect-all customtkinter : thèmes et ressources de la bibliothèque (sinon l'exe démarre sans style)
+          # --collect-submodules       : imports faits à la demande (interface choisie dans main.py, formats de QR code)
+          # --hidden-import            : dialecte SQLite de SQLAlchemy, chargé par son nom au moment de la connexion
+          pyinstaller --noconfirm --clean --onefile --windowed --name Repere \
+            --collect-all customtkinter \
+            --collect-submodules suivi \
+            --collect-submodules qrcode \
+            --collect-submodules sqlmodel \
+            --hidden-import sqlalchemy.dialects.sqlite \
+            main.py
+
+      - name: Vérifier le résultat
+        shell: bash
+        run: |
+          test -f dist/Repere.exe
+          ls -l dist/Repere.exe
+          cd dist && sha256sum Repere.exe | tee Repere.exe.sha256
+
+      - name: Afficher les modules introuvables (aide au diagnostic)
+        if: ${{ always() }}
+        shell: bash
+        run: cat build/Repere/warn-Repere.txt || true
+
+      - name: Conserver le .exe (artefact du workflow)
+        uses: actions/upload-artifact@v7
+        with:
+          name: Repere-windows
+          path: |
+            dist/Repere.exe
+            dist/Repere.exe.sha256
+          if-no-files-found: error
+          retention-days: 30
