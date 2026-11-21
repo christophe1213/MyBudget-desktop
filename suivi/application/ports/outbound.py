@@ -164,3 +164,19 @@ class AuthPorts:
     hasher: PasswordHasher
     tokens: RememberTokens
     local: LocalSessionStore
+
+
+class SyncJournal(ABC):
+    """Journal texte des échanges de synchronisation (une ligne par événement)."""
+
+    @property
+    @abstractmethod
+    def location(self) -> str: ...
+
+    @abstractmethod
+    def append(self, line: str) -> None:
+        """Lève StorageError si l'écriture échoue."""
+
+    @abstractmethod
+    def tail(self, count: int) -> list[str]:
+        """Les `count` dernières lignes ([] si le journal n'existe pas encore)."""

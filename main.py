@@ -13,6 +13,7 @@ import os
 import sys
 
 from suivi.adapters.driven.auth_wiring import sqlmodel_auth_ports
+from suivi.adapters.driven.sync_journal import TextSyncJournal
 from suivi.adapters.driven.wiring import excel_ports, sqlite_ports
 from suivi.bootstrap import build_application
 
@@ -40,7 +41,8 @@ def main() -> None:
     ports = sqlite_ports(folder) if "--sqlite" in sys.argv else excel_ports(folder)
     with_auth = "--no-auth" not in sys.argv and "--classic" not in sys.argv   # l'interface classique n'a pas d'écran de connexion
     auth_ports = sqlmodel_auth_ports(folder) if with_auth else None
-    build_application(create_user_interface(), ports, folder, APP_TITLE, auth_ports).run()
+    journal = TextSyncJournal(os.path.join(folder, "journal_synchronisation.txt"))
+    build_application(create_user_interface(), ports, folder, APP_TITLE, auth_ports, journal).run()
 
 
 if __name__ == "__main__":

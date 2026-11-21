@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import Enum
 from typing import Optional
 
 from ..domain.model.transaction import Transaction
@@ -49,3 +50,35 @@ class LocalSession:
     token: Optional[str] = None        # jeton « Rester connecté » (secret)
     last_email: Optional[str] = None   # pour préremplir et saluer (non secret)
     last_name: Optional[str] = None
+
+
+class WalletSyncStatus(Enum):
+    MERGED = "fusionné"
+    UNCHANGED = "déjà à jour"
+    UNKNOWN_WALLET = "portefeuille inconnu ici (ignoré)"
+    FAILED = "échec"
+
+
+@dataclass(frozen=True)
+class SyncExport:
+    """Données prêtes à être envoyées à un appareil (format « repere »)."""
+    payload: dict
+    wallets: int
+    transactions: int
+    skipped: tuple[str, ...] = ()      # portefeuilles illisibles, non exportés
+
+
+@dataclass(frozen=True)
+class WalletSyncResult:
+    name: str
+    status: WalletSyncStatus
+    added: int = 0                     # transactions ajoutées
+    already_present: int = 0           # transactions reçues mais déjà connues
+    detail: str = ""                   # explication en cas d'échec
+
+
+@dataclass(frozen=True)
+class SyncReport:
+    """Résultat de la réception de données : une ligne par portefeuille reçu."""
+    results: tuple[WalletSyncResult, ...]
+    warnings: tuple[str, ...] = ()     # données non reprises (voir repere_import)

@@ -10,7 +10,7 @@ Authentification     : `auth_ports` (comptes) est indÃ©pendant de `ports` (donnÃ
 """
 from __future__ import annotations
 
-from .adapters.driving.gui.contract.interfaces import UserInterface
+from .adapters.driving.gui.contract.interfaces import SyncView, UserInterface
 from .adapters.driving.gui.controllers.analysis import AnalysisController
 from .adapters.driving.gui.controllers.auth import AuthController
 from .adapters.driving.gui.controllers.balances import BalanceController, CategoryDetailController
@@ -20,12 +20,13 @@ from .adapters.driving.gui.controllers.categories import CategoriesController
 from .adapters.driving.gui.controllers.dashboard import DashboardController
 from .adapters.driving.gui.controllers.header import HeaderController
 from .adapters.driving.gui.controllers.report import ReportController
+from .adapters.driving.gui.controllers.sync import SyncController
 from .adapters.driving.gui.controllers.transactions import TransactionsController
 from .adapters.driving.gui.controllers.wallets import WalletsController
 from .application.events import EventEmitter
 from .application.ports.inbound import ManageWallets
 from .application.dto import UserInfo
-from .application.ports.outbound import AuthPorts, DrivenPorts
+from .application.ports.outbound import AuthPorts, DrivenPorts, SyncJournal
 from .application.session import LedgerSession
 from .application.use_cases.analysis import AnalysisUseCase
 from .application.use_cases.auth import AuthService
@@ -35,6 +36,7 @@ from .application.use_cases.categories import CategoriesUseCase
 from .application.use_cases.dashboard import DashboardUseCase
 from .application.use_cases.reports import ReportsUseCase
 from .application.use_cases.settings import LedgerUseCase
+from .application.use_cases.sync import SyncUseCase
 from .application.use_cases.transactions import TransactionsUseCase
 from .application.use_cases.wallets import WalletsUseCase
 from .domain.services.balances import BalanceCalculator
@@ -87,7 +89,8 @@ class Application:
 
 def build_application(ui: UserInterface, ports: DrivenPorts, export_dir: str,
                       app_title: str = "Suivi des transactions",
-                      auth_ports: AuthPorts | None = None) -> Application:
+                      auth_ports: AuthPorts | None = None,
+                      sync_journal: SyncJournal | None = None) -> Application:
     events = EventEmitter()
     balances, reports = BalanceCalculator(), ReportBuilder()
     planner, analyzer = BudgetPlanner(), SpendingAnalyzer()
@@ -118,6 +121,10 @@ def build_application(ui: UserInterface, ports: DrivenPorts, export_dir: str,
         AnalysisController(events, d, ui.analysis, analysis, categories),
         WalletsController(events, d, ui.wallets, wallets, nav),
     ]
+    # synchronisation (facultative : seulement avec un journal ET une vue qui sait l'afficher)
+    if sync_journal is not None and isinstance(getattr(ui, "sync", None), SyncView):
+        sync = SyncUseCase(session, wallets, ports.ledgers, sync_journal, ports.clock, events)
+        controllers.append(SyncController(events, d, ui.sync, sync))
     application = Application(ui, wallets, controllers)
 
     # authentification (facultative : seulement si on fournit ses adaptateurs ET que l'interface sait l'afficher)

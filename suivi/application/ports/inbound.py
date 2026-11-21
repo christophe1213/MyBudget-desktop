@@ -17,7 +17,7 @@ from ...domain.services.budget import BudgetLine
 from ...domain.services.dashboard import BudgetShares, FlowSeries
 from ...domain.services.reports import Report
 from ...domain.services.spending import SpendingAnalysis, SpendingStats
-from ..dto import CategoryInfo, ImportPreview, Registration, UserInfo, WalletSummary
+from ..dto import CategoryInfo, ImportPreview, Registration, SyncExport, SyncReport, UserInfo, WalletSummary
 
 
 class EventSource(ABC):
@@ -235,3 +235,26 @@ class ViewDashboard(ABC):
     @abstractmethod
     def flows(self, period: Period) -> FlowSeries:
         """Entrées (dépôts) et sorties (dépenses) de chaque jour de la période."""
+
+
+class SynchronizeData(ABC):
+    """Échanger les données avec un autre appareil et tenir le journal de ces échanges."""
+
+    @abstractmethod
+    def export_payload(self, start: Optional[dt.date]) -> SyncExport:
+        """Données de tous les portefeuilles lisibles, à partir de `start` (None = tout l'historique)."""
+
+    @abstractmethod
+    def receive(self, payload) -> SyncReport:
+        """Valide des données reçues (DomainError si invalides) puis fusionne leurs nouvelles transactions
+        dans les portefeuilles du même nom. Rien n'est supprimé ni écrasé."""
+
+    @abstractmethod
+    def record(self, kind: str, message: str) -> str:
+        """Ajoute une ligne au journal de synchronisation ; retourne la ligne écrite (jamais d'exception)."""
+
+    @abstractmethod
+    def recent_entries(self, count: int = 50) -> list[str]: ...
+
+    @abstractmethod
+    def journal_location(self) -> str: ...

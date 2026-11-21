@@ -421,6 +421,53 @@ class DashboardView(ABC):
     def show_flows(self, data: Optional[FlowChartData]) -> None: ...
 
 
+# ---------------------------------------------------------------- synchronisation
+class SyncListener(ABC):
+    @abstractmethod
+    def on_send(self) -> None:
+        """Envoyer les données du PC aux appareils connectés, à partir de la date saisie."""
+
+    @abstractmethod
+    def on_fetch(self) -> None:
+        """Demander aux appareils connectés d'envoyer leurs données."""
+
+    @abstractmethod
+    def on_device_connected(self, client: int, address: str) -> None: ...
+
+    @abstractmethod
+    def on_device_disconnected(self, client: int, address: str) -> None: ...
+
+    @abstractmethod
+    def on_message(self, client: int, address: str, text: str) -> None:
+        """Un appareil a envoyé ce message (texte JSON, voir adapters/driving/sync_protocol.py)."""
+
+
+class SyncView(ABC):
+    """Onglet de synchronisation. La vue possède le serveur réseau et transmet ses événements au contrôleur,
+    DANS le thread de l'interface (le contrôleur n'a donc jamais à se soucier des threads)."""
+
+    @abstractmethod
+    def set_listener(self, listener: SyncListener) -> None: ...
+
+    @abstractmethod
+    def start_date_text(self) -> str:
+        """Date de début saisie (JJ/MM/AAAA) ; vide = tout l'historique."""
+
+    @abstractmethod
+    def device_count(self) -> int: ...
+
+    @abstractmethod
+    def send(self, text: str, client: Optional[int] = None) -> int:
+        """Envoie un message à un appareil (tous si `client` est None) ; retourne le nombre d'appareils atteints."""
+
+    @abstractmethod
+    def show_message(self, line: str) -> None:
+        """Ajoute une ligne à la zone de journal affichée."""
+
+    @abstractmethod
+    def show_journal(self, lines: Sequence[str], location: str) -> None: ...
+
+
 class UserInterface(ABC):
     """Regroupe toutes les vues d'une bibliothèque graphique (fabrique abstraite).
 
@@ -443,6 +490,7 @@ class UserInterface(ABC):
     auth: Optional[AuthView] = None
     account: Optional[AccountView] = None
     screens: Optional[Screens] = None
+    sync: Optional[SyncView] = None   # facultatif : sans lui (ou sans journal), l'onglet reste autonome
 
     @abstractmethod
     def run(self) -> None:
