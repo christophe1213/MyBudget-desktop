@@ -28,6 +28,7 @@ MUTED = "#6B7B72"
 # --- accompagnement ---------------------------------------------------------------------------
 BLUE, BLUE_LIGHT = "#2B7DE9", "#E8F1FD"
 AMBER, AMBER_LIGHT = "#F28C28", "#FFF1E0"
+AMBER_DARK = "#B45309"     # texte sur fond ambre clair (lisible)
 RED, RED_LIGHT = "#D64545", "#FDECEC"
 
 FONT_FAMILY = "Segoe UI"

@@ -10,6 +10,7 @@ ALL = "Toutes"  # valeur « pas de filtre » des listes déroulantes
 class Tab(Enum):
     DASHBOARD = 0
     ENTRY = 1
+    TRANSACTIONS = 10   # déclaré ici pour s'afficher juste après « Saisie » (l'ordre = l'ordre de déclaration)
     BALANCES = 2
     CATEGORY_DETAILS = 3
     CATEGORIES = 4

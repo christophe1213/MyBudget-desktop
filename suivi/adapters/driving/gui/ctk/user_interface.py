@@ -17,6 +17,7 @@ from .dialogs import CtkDialogs
 from .header_view import CtkHeaderView
 from .report_view import CtkReportView
 from .sync_view import CtkSyncView
+from .transactions_page_view import CtkTransactionsPageView
 from .transactions_view import CtkTransactionsView
 from .wallets_view import CtkWalletsView
 from .widgets import apply_table_style, label
@@ -24,6 +25,7 @@ from .widgets import apply_table_style, label
 _PAGES = {
     Tab.DASHBOARD: ("Tableau de bord", "Où en sont vos budgets et comment l'argent circule"),
     Tab.ENTRY: ("Saisie", "Enregistrez vos dépôts et vos dépenses"),
+    Tab.TRANSACTIONS: ("Transactions", "Dépenses, versements et transferts de chaque portefeuille"),
     Tab.BALANCES: ("Solde par date", "Évolution de votre solde jour après jour"),
     Tab.CATEGORY_DETAILS: ("Détail par catégorie", "Dépôts, dépenses et solde de chaque catégorie"),
     Tab.CATEGORIES: ("Catégories", "Organisez vos dépenses par catégorie"),
@@ -126,6 +128,7 @@ class CtkUserInterface(UserInterface):
         self.header = CtkHeaderView(self.root, header_frame)
         self.dashboard = CtkDashboardView(bodies[Tab.DASHBOARD])
         self.transactions = CtkTransactionsView(bodies[Tab.ENTRY])
+        self.transactions_page = CtkTransactionsPageView(bodies[Tab.TRANSACTIONS])   # maquette : non branchée
         self.balances = CtkBalanceView(bodies[Tab.BALANCES])
         self.category_details = CtkCategoryDetailView(bodies[Tab.CATEGORY_DETAILS])
         self.categories = CtkCategoryManagerView(bodies[Tab.CATEGORIES])

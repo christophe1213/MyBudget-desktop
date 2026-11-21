@@ -45,6 +45,8 @@ class TkUserInterface(UserInterface):
         notebook.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         frames = {}
         for tab in Tab:  # l'ordre de l'énumération = l'ordre des onglets
+            if tab not in _TITLES:   # onglet propre à l'interface customtkinter (ex. Transactions, en maquette)
+                continue
             frames[tab] = ttk.Frame(notebook, padding=10)
             notebook.add(frames[tab], text=_TITLES[tab])
 
