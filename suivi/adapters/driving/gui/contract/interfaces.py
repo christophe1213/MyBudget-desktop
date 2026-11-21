@@ -461,6 +461,12 @@ class SyncView(ABC):
         """Envoie un message à un appareil (tous si `client` est None) ; retourne le nombre d'appareils atteints."""
 
     @abstractmethod
+    def confirm_transfer(self, title: str, heading: str, notes: Sequence[str], rows: Sequence[Row],
+                         confirm_label: str) -> bool:
+        """Fenêtre modale : liste des données (colonnes : portefeuille, date, catégorie, libellé, montant) et
+        boutons Annuler / `confirm_label`. Retourne True seulement si l'utilisateur confirme."""
+
+    @abstractmethod
     def show_message(self, line: str) -> None:
         """Ajoute une ligne à la zone de journal affichée."""
 

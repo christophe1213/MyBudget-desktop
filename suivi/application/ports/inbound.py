@@ -17,7 +17,8 @@ from ...domain.services.budget import BudgetLine
 from ...domain.services.dashboard import BudgetShares, FlowSeries
 from ...domain.services.reports import Report
 from ...domain.services.spending import SpendingAnalysis, SpendingStats
-from ..dto import CategoryInfo, ImportPreview, Registration, SyncExport, SyncReport, UserInfo, WalletSummary
+from ..dto import (CategoryInfo, ImportPreview, Registration, SyncExport, SyncPreview, SyncReport, UserInfo,
+                   WalletSummary)
 
 
 class EventSource(ABC):
@@ -243,6 +244,10 @@ class SynchronizeData(ABC):
     @abstractmethod
     def export_payload(self, start: Optional[dt.date]) -> SyncExport:
         """Données de tous les portefeuilles lisibles, à partir de `start` (None = tout l'historique)."""
+
+    @abstractmethod
+    def preview_receive(self, payload) -> SyncPreview:
+        """Ce que `receive` ferait de ces données, SANS rien modifier (DomainError si elles sont invalides)."""
 
     @abstractmethod
     def receive(self, payload) -> SyncReport:

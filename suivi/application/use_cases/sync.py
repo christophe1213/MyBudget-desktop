@@ -6,7 +6,9 @@ from typing import Optional
 
 from ...domain.model.errors import DomainError
 from ...domain.model.ledger import Ledger
-from ..dto import SyncExport, SyncReport, WalletSummary, WalletSyncResult, WalletSyncStatus
+from ...domain.model.transaction import Kind, Transaction
+from ..dto import (SyncExport, SyncPreview, SyncReport, SyncWalletPreview, WalletSummary, WalletSyncResult,
+                   WalletSyncStatus)
 from ..errors import StorageError
 from ..events import Event, EventEmitter
 from ..ports.inbound import ManageWallets, SynchronizeData
@@ -47,9 +49,36 @@ class SyncUseCase(SynchronizeData):
         payload = ledgers_to_repere(items, active=self._wallets.active_name(), start=start,
                                     exported_at=self._clock.now())
         count = sum(len(w["transactions"]) for w in payload["wallets"])
-        return SyncExport(payload, len(items), count, tuple(skipped))
+        details = tuple(self._export_details(w) for w in payload["wallets"])
+        return SyncExport(payload, len(items), count, tuple(skipped), details)
+
+    @staticmethod
+    def _export_details(wallet: dict) -> SyncWalletPreview:
+        """La liste affichée avant l'envoi est relue DANS le contenu à envoyer : on voit ce qui partira vraiment."""
+        kinds = {"deposit": Kind.DEPOSIT, "expense": Kind.EXPENSE}
+        transactions = tuple(Transaction(dt.date.fromisoformat(t["date"]), t["category"], kinds[t["kind"]],
+                                         t["label"], t["amount"]) for t in wallet["transactions"])
+        opening = tuple((c["name"], c["initialBalance"]) for c in wallet["categories"] if c["initialBalance"])
+        return SyncWalletPreview(wallet["name"], transactions, opening_balances=opening)
 
     # ---- réception ---------------------------------------------------------------------------------
+    def preview_receive(self, payload) -> SyncPreview:
+        reception = repere_to_ledgers(payload)
+        local = {s.name.casefold(): s for s in self._wallets.summaries()}
+        previews = []
+        for received in reception.wallets:
+            target = local.get(received.name.casefold())
+            if target is None:
+                previews.append(SyncWalletPreview(received.name, status=WalletSyncStatus.UNKNOWN_WALLET))
+                continue
+            try:
+                _current, fresh, new_categories, already = self._plan(target, received)
+            except (DomainError, StorageError) as error:
+                previews.append(SyncWalletPreview(received.name, status=WalletSyncStatus.FAILED, detail=str(error)))
+                continue
+            previews.append(SyncWalletPreview(received.name, tuple(fresh), already, tuple(new_categories)))
+        return SyncPreview(tuple(previews), reception.warnings)
+
     def receive(self, payload) -> SyncReport:
         reception = repere_to_ledgers(payload)   # tout est validé avant de toucher à un portefeuille
         local = {s.name.casefold(): s for s in self._wallets.summaries()}
@@ -69,7 +98,8 @@ class SyncUseCase(SynchronizeData):
             self._events.emit(Event.CATALOG_CHANGED)   # l'onglet Portefeuilles recompte les transactions
         return SyncReport(tuple(results), reception.warnings)
 
-    def _merge(self, target: WalletSummary, received: ReceivedWallet) -> WalletSyncResult:
+    def _plan(self, target: WalletSummary, received: ReceivedWallet):
+        """(livre actuel, transactions à ajouter, catégories à créer, nombre déjà présentes) : rien n'est modifié."""
         if target.active:
             current = self._session.ledger
         elif target.transaction_count is None:
@@ -81,7 +111,10 @@ class SyncUseCase(SynchronizeData):
                            for t in received.ledger.transactions])
         fresh = new_transactions(current, incoming)
         new_categories = [c for c in received.ledger.categories if c.casefold() not in known]
-        already = len(incoming.transactions) - len(fresh)
+        return current, fresh, new_categories, len(incoming.transactions) - len(fresh)
+
+    def _merge(self, target: WalletSummary, received: ReceivedWallet) -> WalletSyncResult:
+        current, fresh, new_categories, already = self._plan(target, received)
         if not fresh and not new_categories:
             return WalletSyncResult(received.name, WalletSyncStatus.UNCHANGED, already_present=already)
 

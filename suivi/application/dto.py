@@ -60,12 +60,36 @@ class WalletSyncStatus(Enum):
 
 
 @dataclass(frozen=True)
+class SyncWalletPreview:
+    """Ce qu'une synchronisation fera à UN portefeuille, pour que l'utilisateur confirme avant d'agir."""
+    name: str
+    transactions: tuple[Transaction, ...] = ()           # à envoyer, ou nouvelles à ajouter
+    already_present: int = 0                             # réception : reçues mais déjà connues
+    new_categories: tuple[str, ...] = ()                 # réception : catégories qui seront créées
+    opening_balances: tuple[tuple[str, int], ...] = ()   # envoi : soldes de départ reportés (catégorie, montant)
+    status: Optional[WalletSyncStatus] = None            # réception : inconnu ici / échec ; None = normal
+    detail: str = ""
+
+
+@dataclass(frozen=True)
+class SyncPreview:
+    """Aperçu d'une réception : rien n'a encore été modifié."""
+    wallets: tuple[SyncWalletPreview, ...]
+    warnings: tuple[str, ...] = ()
+
+    @property
+    def has_changes(self) -> bool:
+        return any(w.transactions or w.new_categories for w in self.wallets)
+
+
+@dataclass(frozen=True)
 class SyncExport:
     """Données prêtes à être envoyées à un appareil (format « repere »)."""
     payload: dict
     wallets: int
     transactions: int
     skipped: tuple[str, ...] = ()      # portefeuilles illisibles, non exportés
+    details: tuple[SyncWalletPreview, ...] = ()   # la liste exacte de ce qui sera envoyé, par portefeuille
 
 
 @dataclass(frozen=True)

@@ -84,6 +84,8 @@ class SyncFlowTest(unittest.TestCase):
         self.app.wallets.create("Caisse")               # second portefeuille (non actif ensuite)
         self.app.wallets.open("Principal")
         self.view = self.ui.sync
+        self.confirm = MagicMock(return_value=True)      # l'utilisateur confirme ; la vraie fenêtre est testée à part
+        self.view.confirm_transfer = self.confirm
         self.view._server_port.set(str(free_port()))
         self.view.start()
         self.addCleanup(self.view.stop)
@@ -146,6 +148,23 @@ class SyncFlowTest(unittest.TestCase):
         self.assertEqual(message["payload"]["activeWalletId"], wallets["Principal"]["id"])
         self.assertIn("ENVOI", self.journal())
         self.assertIn("depuis le 02/09/2026", self.journal())
+        # la liste affichée avant l'envoi est exactement ce qui part, puis une boîte de message conclut
+        title, heading, notes, rows, confirm_label = self.confirm.call_args.args
+        self.assertEqual((title, confirm_label), ("Confirmer l'envoi", "Envoyer"))
+        self.assertIn("1 transaction(s)", heading)
+        self.assertIn("depuis le 02/09/2026", heading)
+        self.assertEqual([r.values for r in rows], [("Principal", "03/09/2026", "gouter", "thé", "-500 Ar")])
+        self.assertTrue(any("bazar 7 000 Ar" in n for n in notes))
+        self.dialogs.info.assert_called_once()
+        self.assertEqual(self.dialogs.info.call_args.args[0], "Envoi terminé")
+
+    def test_envoi_annule_ne_part_pas(self):
+        self.confirm.return_value = False
+        self.view._listener.on_send()
+        self.confirm.assert_called_once()
+        self.assertFalse(self.client.has_data(0.3))                  # rien n'est parti
+        self.assertIn("Envoi annulé", self.journal())
+        self.dialogs.info.assert_not_called()
 
     def test_envoyer_tout_l_historique(self):
         self.view._listener.on_send()
@@ -170,6 +189,7 @@ class SyncFlowTest(unittest.TestCase):
         self.view._listener.on_fetch()
         self.assertEqual(json.loads(self.client.recv_text()), {"type": "request"})
         self.assertIn("DEMANDE", self.journal())
+        self.assertEqual(self.dialogs.info.call_args.args[0], "Demande envoyée")
 
     def test_reception_fusionne_sans_doublon_dans_chaque_portefeuille(self):
         payload = self.incoming(principal_extra=[(D(2026, 9, 4), "bazar", "pain", 800)],
@@ -184,11 +204,44 @@ class SyncFlowTest(unittest.TestCase):
         self.assertEqual([t.label for t in caisse.transactions], ["bus"])
         self.assertIn("transport", caisse.categories)
         self.assertIn("RECEPTION", self.journal())
+        # avant d'ajouter : la liste des nouvelles transactions, avec leur portefeuille ; après : une boîte de message
+        title, heading, notes, rows, confirm_label = self.confirm.call_args.args
+        self.assertEqual((title, confirm_label), ("Confirmer la réception", "Ajouter"))
+        self.assertIn("2 transaction(s)", heading)
+        self.assertEqual(sorted((r.values[0], r.values[3]) for r in rows), [("Caisse", "bus"), ("Principal", "pain")])
+        self.assertTrue(any("Inconnu" in n and "ignoré" in n for n in notes))
+        self.assertEqual(self.dialogs.info.call_args.args[0], "Réception terminée")
 
         again = self.reply_after(lambda: self.client.send_text(json.dumps({"type": "data", "payload": payload})))
         self.assertIn("Principal : déjà à jour", again["message"])
+        self.confirm.assert_called_once()                       # rien de nouveau : pas de confirmation inutile
+        self.assertEqual(self.dialogs.info.call_count, 2)       # mais le résultat est annoncé
         self.assertEqual(len(self.stored().transactions), 4)                       # idempotent
         self.assertEqual(len(self.stored(self.caisse_location()).transactions), 1)
+
+    def test_reception_refusee_ne_modifie_rien(self):
+        before = (self.stored().transactions, self.stored(self.caisse_location()).transactions)
+        self.confirm.return_value = False
+        reply = self.client_sends(self.incoming(principal_extra=[(D(2026, 9, 4), "bazar", "pain", 800)],
+                                                caisse_extra=[(D(2026, 9, 5), "bus", 1200)]))
+        self.assertEqual(reply["type"], "error")
+        self.assertIn("refusée", reply["message"])
+        self.assertEqual((self.stored().transactions, self.stored(self.caisse_location()).transactions), before)
+        self.assertIn("réception refusée", self.journal())
+        self.dialogs.info.assert_not_called()
+
+    def test_apercu_ne_modifie_rien(self):
+        sync = self.view._listener._sync
+        preview = sync.preview_receive(self.incoming(principal_extra=[(D(2026, 9, 4), "bazar", "pain", 800)],
+                                                     caisse_extra=[(D(2026, 9, 5), "bus", 1200)],
+                                                     extra_wallet="Inconnu"))
+        self.assertTrue(preview.has_changes)
+        by_name = {w.name: w for w in preview.wallets}
+        self.assertEqual((len(by_name["Principal"].transactions), by_name["Principal"].already_present), (1, 3))
+        self.assertEqual(by_name["Caisse"].new_categories, ("transport",))
+        self.assertIsNotNone(by_name["Inconnu"].status)
+        self.assertEqual(len(self.stored().transactions), 3)                       # rien n'a été écrit
+        self.assertEqual(self.stored(self.caisse_location()).transactions, ())
 
     def test_reception_categorie_avec_une_autre_casse(self):
         ledger = Ledger(categories=["BAZAR"])
@@ -210,13 +263,46 @@ class SyncFlowTest(unittest.TestCase):
                 self.assertEqual(reply["type"], "error")
         self.assertEqual(self.stored().transactions, before)
         self.assertIn("ERREUR", self.journal())
+        self.dialogs.warning.assert_called()                       # la donnée invalide est signalée à l'utilisateur
+        self.confirm.assert_not_called()                           # et rien n'a été proposé à la confirmation
 
     def test_un_appareil_peut_demander_les_donnees_du_pc(self):
         reply = self.reply_after(lambda: self.client.send_text(json.dumps({"type": "request", "start": "2026-09-03"})))
         wallet = next(w for w in reply["payload"]["wallets"] if w["name"] == "Principal")
         self.assertEqual([t["date"] for t in wallet["transactions"]], ["2026-09-03"])
+        self.assertIn("127.0.0.1 demande vos données", self.confirm.call_args.args[1])
         bad = self.reply_after(lambda: self.client.send_text(json.dumps({"type": "request", "start": "demain"})))
         self.assertEqual(bad["type"], "error")
+
+    def test_demande_d_un_appareil_refusee(self):
+        self.confirm.return_value = False
+        reply = self.reply_after(lambda: self.client.send_text(json.dumps({"type": "request"})))
+        self.assertEqual(reply["type"], "error")
+        self.assertIn("refusé", reply["message"])
+        self.assertIn("envoi refusé", self.journal())
+
+    def test_pendant_la_confirmation_les_messages_attendent(self):
+        seen = []
+
+        def during(*_args):
+            if not seen:                                                 # une fois : un message arrive pendant la fenêtre
+                self.client.send_text(json.dumps({"type": "request"}))
+                time.sleep(0.2)
+                self.view._pump()                                        # ce que ferait la boucle graphique
+                seen.append(self.client.has_data(0.1))
+            return True
+
+        self.confirm.side_effect = during
+        self.view._act("on_send")
+        self.assertEqual(seen, [False])                                  # non traité tant que la fenêtre est ouverte
+        self.assertEqual(json.loads(self.client.recv_text())["type"], "data")   # l'envoi voulu
+        self.pump_until(lambda: self.client.has_data())
+        self.assertEqual(json.loads(self.client.recv_text())["type"], "data")   # puis la demande en attente
+
+    def test_vraie_fenetre_de_confirmation_sous_simulation(self):
+        # sans interface réelle la fenêtre ne peut pas être confirmée : le résultat sûr est « Annuler »
+        window = type(self.view).confirm_transfer
+        self.assertFalse(window(self.view, "Titre", "Entête", ["note"], [], "OK"))
 
     # ---- journal et arrêt ------------------------------------------------------------------------------------
     def test_journal_affiche_au_demarrage_et_connexions_notees(self):

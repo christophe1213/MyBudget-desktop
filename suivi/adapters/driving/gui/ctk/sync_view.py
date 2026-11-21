@@ -7,9 +7,10 @@ from typing import Optional, Sequence
 import customtkinter as ctk
 
 from . import theme as t
+from ..contract.dto import Row
 from ..contract.interfaces import SyncListener, SyncView
 from ...sync_server import SyncEvent, SyncHTTPServer
-from .widgets import button, entry, label
+from .widgets import Column, Table, button, entry, label
 
 POLL_MS = 150   # fréquence à laquelle les événements du réseau sont repris dans le thread de l'interface
 
@@ -20,6 +21,7 @@ class CtkSyncView(SyncView):
         self._listener: Optional[SyncListener] = None
         self._server: SyncHTTPServer | None = None
         self._after_id = None
+        self._busy = False   # une fenêtre de confirmation est ouverte : les messages reçus attendent
         self._status = ctk.StringVar(value="Synchronisation arrêtée")
         self._server_port = ctk.StringVar(value="8765")
         self._start_date = ctk.StringVar(value="")
@@ -87,6 +89,44 @@ class CtkSyncView(SyncView):
             return 0
         return self._server.send(text, client)
 
+    def confirm_transfer(self, title: str, heading: str, notes: Sequence[str], rows: Sequence[Row],
+                         confirm_label: str) -> bool:
+        root = self._parent.winfo_toplevel()
+        window = ctk.CTkToplevel(root, fg_color=t.WHITE)
+        window.title(title)
+        window.geometry("860x580")
+        window.minsize(680, 440)
+        window.transient(root)
+        result = {"ok": False}
+
+        def finish(ok: bool) -> None:
+            result["ok"] = ok
+            window.destroy()
+
+        label(window, heading, "heading", wraplength=800).pack(anchor="w", padx=22, pady=(20, 6))
+        for note in notes:
+            label(window, note, "muted", wraplength=800).pack(anchor="w", padx=22)
+        buttons = ctk.CTkFrame(window, fg_color="transparent")
+        buttons.pack(side="bottom", fill="x", padx=22, pady=(10, 18))
+        button(buttons, confirm_label, lambda: finish(True), "primary", 140).pack(side="right")
+        button(buttons, "Annuler", lambda: finish(False), "secondary", 120).pack(side="right", padx=(0, 10))
+        body = ctk.CTkFrame(window, fg_color="transparent")
+        body.pack(fill="both", expand=True, padx=22, pady=(10, 0))
+        table = Table(body, [Column("wallet", "Portefeuille", 130), Column("date", "Date", 95),
+                             Column("category", "Catégorie", 130), Column("label", "Libellé", 260),
+                             Column("amount", "Montant", 110, "e")], height=12)
+        table.show(rows)
+        if not rows:
+            label(body, "Aucune transaction : seuls les soldes et catégories sont concernés.", "muted").pack(pady=6)
+        window.bind("<Escape>", lambda _event: finish(False))
+        window.protocol("WM_DELETE_WINDOW", lambda: finish(False))
+        window.update_idletasks()
+        window.wait_visibility()
+        window.grab_set()
+        window.focus_force()
+        root.wait_window(window)
+        return result["ok"]
+
     def show_message(self, line: str) -> None:
         self._write([line], replace=False)
 
@@ -131,8 +171,13 @@ class CtkSyncView(SyncView):
         server = self._server
         if server is None or not server.running:
             return
-        for event in server.poll():
-            self._dispatch(event)
+        if not self._busy:   # fenêtre de confirmation ouverte : les événements restent dans la file
+            self._busy = True
+            try:
+                for event in server.poll():
+                    self._dispatch(event)
+            finally:
+                self._busy = False
         self._devices.set(f"Appareils connectés : {server.client_count}")
         self._schedule()
 
@@ -150,8 +195,13 @@ class CtkSyncView(SyncView):
             self.show_message(f"Erreur inattendue : {exc}")
 
     def _act(self, name: str) -> None:
-        if self._listener is not None:
+        if self._listener is None or self._busy:
+            return
+        self._busy = True
+        try:
             getattr(self._listener, name)()
+        finally:
+            self._busy = False
 
     def _write(self, lines: Sequence[str], replace: bool) -> None:
         self._log.configure(state="normal")
